@@ -1,0 +1,181 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: buildah-oci-ta
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: image-build, konflux
+  labels:
+    app.kubernetes.io/version: "0.1"
+spec:
+  description: |-
+    This task allows to run an script stored on the git repository and stores the resultant directory
+    to use it later.
+  params:
+    - name: enableSymlinkCheck
+      description: |
+        Check symlinks in the repo. If they're pointing outside of the repo, the build will fail.
+      type: string
+      default: "true"
+    - name: ociArtifactExpiresAfter
+      description: Expiration date for the trusted artifacts created in the
+        OCI repository. An empty string means the artifacts do not expire.
+      type: string
+      default: ""
+    - name: ociStorage
+      description: The OCI repository where the Trusted Artifacts are stored.
+      type: string
+    - name: SCRIPT_IMAGE
+      description: The image to run the script in
+      type: string
+    - name: SCRIPT
+      description: The script to launch
+      type: string
+    - name: HERMETIC
+      description: Determines if build will be executed without network access.
+      type: string
+      default: "false"
+    - name: PREFETCH_INPUT
+      description: In case it is not empty, the prefetched content should
+        be made available to the build.
+    - name: SOURCE_ARTIFACT
+      description: The Trusted Artifact URI pointing to the artifact with
+        the application source code.
+      type: string
+    - name: caTrustConfigMapKey
+      description: The name of the key in the ConfigMap that contains the
+        CA bundle data.
+      type: string
+      default: ca-bundle.crt
+    - name: caTrustConfigMapName
+      description: The name of the ConfigMap to read CA bundle data from.
+      type: string
+      default: trusted-ca
+  results:
+    - name: SCRIPT_ARTIFACT
+      description: The Trusted Artifact URI pointing to the artifact with
+        the application source code.
+  volumes:
+    - name: trusted-ca
+      configMap:
+        items:
+          - key: $(params.caTrustConfigMapKey)
+            path: ca-bundle.crt
+        name: $(params.caTrustConfigMapName)
+        optional: true
+    - name: workdir
+      emptyDir: {}
+  stepTemplate:
+    computeResources:
+      limits:
+        memory: 4Gi
+      requests:
+        cpu: "1"
+        memory: 1Gi
+    env:
+      - name: SCRIPT
+        value: $(params.SCRIPT)
+      - name: HERMETIC
+        value: $(params.HERMETIC)
+      - name: SOURCE_CODE_DIR
+        value: source
+    volumeMounts:
+      - mountPath: /var/workdir
+        name: workdir
+  steps:
+    - name: use-trusted-artifact
+      image: quay.io/redhat-appstudio/build-trusted-artifacts:latest@sha256:ff35e09ff5c89e54538b50abae241a765b2b7868f05d62c4835bebf0978f3659
+      args:
+        - use
+        - $(params.SOURCE_ARTIFACT)=/var/workdir/source
+        - $(params.CACHI2_ARTIFACT)=/var/workdir/cachi2
+    - name: run-script
+      image: $(params.SCRIPT_IMAGE)
+      args:
+        - $(parans.SCRIPT)
+      workingDir: /var/workdir
+      volumeMounts:
+        - mountPath: /entitlement
+          name: etc-pki-entitlement
+        - mountPath: /activation-key
+          name: activation-key
+        - mountPath: /mnt/trusted-ca
+          name: trusted-ca
+          readOnly: true
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+        ca_bundle=/mnt/trusted-ca/ca-bundle.crt
+        if [ -f "$ca_bundle" ]; then
+          echo "INFO: Using mounted CA bundle: $ca_bundle"
+          cp -vf $ca_bundle /etc/pki/ca-trust/source/anchors
+          update-ca-trust
+        fi
+
+        if [ "${HERMETIC}" == "true" ]; then
+          echo "The script will be executed with network isolation"
+        fi
+
+        if [ -f "/var/workdir/cachi2/cachi2.env" ]; then
+          echo "Prefetched content will be made available"
+        fi
+
+        # Exec the script
+        $@
+    - name: symlink-check
+      image: quay.io/konflux-ci/git-clone@sha256:4e53ebd9242f05ca55bfc8d58b3363d8b9d9bc3ab439d9ab76cdbdf5b1fd42d9
+      volumeMounts:
+        - mountPath: /var/workdir
+          name: workdir
+      env:
+        - name: PARAM_ENABLE_SYMLINK_CHECK
+          value: $(params.enableSymlinkCheck)
+        - name: CHECKOUT_DIR
+          value: /var/workdir/source
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        check_symlinks() {
+          FOUND_SYMLINK_POINTING_OUTSIDE_OF_REPO=false
+          while read -r symlink; do
+            target=$(readlink -m "$symlink")
+            if ! [[ "$target" =~ ^$CHECKOUT_DIR ]]; then
+              echo "The cloned repository contains symlink pointing outside of the cloned repository: $symlink"
+              FOUND_SYMLINK_POINTING_OUTSIDE_OF_REPO=true
+            fi
+          done < <(find $CHECKOUT_DIR -type l -print)
+          if [ "$FOUND_SYMLINK_POINTING_OUTSIDE_OF_REPO" = true ]; then
+            return 1
+          fi
+        }
+
+        if [ "${PARAM_ENABLE_SYMLINK_CHECK}" = "true" ]; then
+          echo "Running symlink check"
+          check_symlinks
+        fi
+    - name: create-trusted-artifact
+      image: quay.io/redhat-appstudio/build-trusted-artifacts:latest@sha256:ff35e09ff5c89e54538b50abae241a765b2b7868f05d62c4835bebf0978f3659
+      args:
+        - create
+        - --store
+        - $(params.ociStorage)
+        - $(results.SCRIPT_ARTIFACT.path)=/var/workdir/source
+      volumeMounts:
+        - mountPath: /var/workdir
+          name: workdir
+        - mountPath: /etc/pki/tls/certs/ca-custom-bundle.crt
+          name: trusted-ca
+          readOnly: true
+          subPath: ca-bundle.crt
+      env:
+        - name: IMAGE_EXPIRES_AFTER
+          value: $(params.ociArtifactExpiresAfter)
+      computeResources:
+        limits:
+          memory: 3Gi
+        requests:
+          cpu: "1"
+          memory: 3Gi
+
