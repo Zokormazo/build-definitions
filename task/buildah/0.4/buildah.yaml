@@ -645,7 +645,7 @@ spec:
       name: shared
 
   - name: prepare-sboms
-    image: quay.io/konflux-ci/sbom-utility-scripts@sha256:6dc75d3cdac794dfef90a4296a43a1506bd80c4ac0d897293439563b0dd5ac41
+    image: quay.io/jlandaal/sbom-utility-scripts:latest
     computeResources:
       limits:
         memory: 512Mi
