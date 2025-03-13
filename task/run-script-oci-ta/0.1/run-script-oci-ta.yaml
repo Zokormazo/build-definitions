@@ -159,7 +159,7 @@ spec:
         cp -r /var/workdir/source /var/workdir/script
         mkdir /var/workdir/output
         buildah from --name script-container "$SCRIPT_IMAGE"
-        unshare -Uf "${UNSHARE_ARGS[@]}" --keep-caps -r --map-users 1,1,65536 --map-groups 1,1,65536 -w /var/workdir buildah run --volume /var/workdir/script:/var/workdir/script --volume /var/workdir/output:/var/workdir/output --workingdir "$SCRIPT_WORKDIR" --user root:root -- script-container "$@"
+        unshare -Uf "${UNSHARE_ARGS[@]}" --keep-caps -r --map-users 1,1,65536 --map-groups 1,1,65536 -w /var/workdir buildah run --volume /var/workdir/script:/var/workdir/script --volume /var/workdir/output:/var/workdir/output --workingdir "$SCRIPT_WORKDIR" --user root:root -- script-container $@
 
         IMAGE_REFERENCE=$(buildah inspect script-container | jq -r '.FromImage + "@" + .FromImageDigest')
         echo "$IMAGE_REFERENCE" > "$(results.SCRIPT_BASE_IMAGE.path)"
