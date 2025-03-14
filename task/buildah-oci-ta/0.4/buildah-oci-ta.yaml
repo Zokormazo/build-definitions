@@ -771,7 +771,7 @@ spec:
         done
 
         for ADDITIONAL_BASE_IMAGE in "${ADDITIONAL_BASE_IMAGES[@]}"; do
-          BASE_IMAGE=("${ADDITIONAL_BASE_IMAGE//=/ }")
+          IFS="@" read -ra BASE_IMAGE <<< "${ADDITIONAL_BASE_IMAGE}"
           python3 /scripts/add_image_reference.py \
             --builder-image \
             --image-url "${BASE_IMAGE[0]}" \
