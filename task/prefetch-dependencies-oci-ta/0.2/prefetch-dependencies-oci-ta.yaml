@@ -148,7 +148,7 @@ spec:
           echo -n "" >$(results.CACHI2_ARTIFACT.path)
         fi
     - name: use-trusted-artifact
-      image: quay.io/konflux-ci/build-trusted-artifacts:latest@sha256:4689f88dd253bd1feebf57f1a76a5a751880f739000719cd662bbdc76990a7fd
+      image: quay.io/jlandaal/built-trusted-artifacts:latest
       args:
         - use
         - $(params.SOURCE_ARTIFACT)=/var/workdir/source
@@ -405,7 +405,7 @@ spec:
           cpu: "1"
           memory: 3Gi
     - name: create-trusted-artifact
-      image: quay.io/konflux-ci/build-trusted-artifacts:latest@sha256:4689f88dd253bd1feebf57f1a76a5a751880f739000719cd662bbdc76990a7fd
+      image: quay.io/jlandaal/built-trusted-artifacts:latest
       args:
         - create
         - --store
