@@ -193,6 +193,7 @@ spec:
         snyk code test $ARGS --severity-threshold="$SEVERITY_THRESHOLD" "$SOURCE_CODE_DIR" --max-depth=1 --sarif-file-output="${SOURCE_CODE_DIR}"/sast_snyk_check_out.json 1>&2 >>stdout.txt
         SNYK_EXIT_CODE=$?
         cat stdout.txt
+        pwd
         ls ${SOURCE_CODE_DIR}
         cat ${SOURCE_CODE_DIR}/sast_snyk_check_out.json
         set -e
